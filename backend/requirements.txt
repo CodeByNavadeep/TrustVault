@@ -4,3 +4,6 @@ Flask-Migrate
 psycopg[binary]
 python-dotenv
 pytest
+Flask-CORS
+Flask-Session[sqlalchemy]
+gunicorn
