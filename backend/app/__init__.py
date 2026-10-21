@@ -54,11 +54,19 @@ def create_app():
 
     migrate.init_app(app, db)
 
+    frontend_origin = os.environ.get(
+    "FRONTEND_ORIGIN",
+    "http://localhost:5173",
+    )
+
     CORS(
         app,
         resources={
             r"/api/*": {
-                "origins": ["http://localhost:5173"]
+                "origins": [
+                    "http://localhost:5173",
+                    frontend_origin,
+                ]
             }
         },
         supports_credentials=True,
