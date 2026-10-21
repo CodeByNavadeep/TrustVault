@@ -197,9 +197,18 @@ async function handleUpload(event) {
     }
   }
 
+
 async function handleView(document) {
   setError("");
   setMessage("");
+
+  // Open a blank tab immediately, while still inside the user's click.
+  const previewWindow = window.open("about:blank", "_blank");
+
+  if (!previewWindow) {
+    setError("The preview was blocked. Allow pop-ups and try again.");
+    return;
+  }
 
   try {
     const response = await api.viewDocument(document.id);
@@ -220,19 +229,18 @@ async function handleView(document) {
 
     const blob = await response.blob();
     const url = URL.createObjectURL(blob);
-    const previewWindow = window.open(url, "_blank", "noopener,noreferrer");
 
-    if (!previewWindow) {
-      URL.revokeObjectURL(url);
-      throw new Error("The preview was blocked. Allow pop-ups and try again.");
-    }
+    // Navigate the already-open tab after the document has loaded.
+    previewWindow.location.href = url;
 
-    // Give the new tab time to load the blob before releasing the URL.
+    // Release the temporary object URL after the preview has had time to load.
     window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
   } catch (err) {
+    previewWindow.close();
     setError(err.message);
   }
 }
+
 
 async function handleDelete(document) {
   const confirmed = window.confirm(
