@@ -36,7 +36,7 @@ def create_app():
         SESSION_COOKIE_SECURE=os.environ.get(
             "SESSION_COOKIE_SECURE", "false"
         ).lower() == "true",
-        SESSION_COOKIE_SAMESITE="Lax",
+        SESSION_COOKIE_SAMESITE="None",
         SESSION_SERIALIZATION_FORMAT="json",
         DOCUMENT_STORAGE_DIR=str(storage_dir),
     )
