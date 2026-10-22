@@ -1,17 +1,30 @@
 
-import "../css/AuthForm.css";
 
 export default function AuthForm({
   mode,
+  name,
   email,
   password,
+  confirmPassword,
   busy,
+  onNameChange,
   onEmailChange,
   onPasswordChange,
+  onConfirmPasswordChange,
   onSubmit,
   onModeChange,
 }) {
   const isRegister = mode === "register";
+
+  function handleSubmit(event) {
+    if (isRegister && password !== confirmPassword) {
+      event.preventDefault();
+      alert("Passwords do not match. Please try again.");
+      return;
+    }
+
+    onSubmit(event);
+  }
 
   return (
     <section className="auth-card">
@@ -41,7 +54,23 @@ export default function AuthForm({
           : "Log in to access your private documents."}
       </p>
 
-      <form className="form" onSubmit={onSubmit}>
+      <form className="form" onSubmit={handleSubmit}>
+        {isRegister && (
+          <>
+            <label htmlFor="name">Full name</label>
+            <input
+              id="name"
+              type="text"
+              autoComplete="name"
+              value={name}
+              onChange={(event) => onNameChange(event.target.value)}
+              placeholder="Your full name"
+              maxLength={100}
+              required
+            />
+          </>
+        )}
+
         <label htmlFor="email">Email address</label>
         <input
           id="email"
@@ -67,6 +96,24 @@ export default function AuthForm({
           minLength={isRegister ? 12 : undefined}
           required
         />
+
+        {isRegister && (
+          <>
+            <label htmlFor="confirmPassword">Confirm password</label>
+            <input
+              id="confirmPassword"
+              type="password"
+              autoComplete="new-password"
+              value={confirmPassword}
+              onChange={(event) =>
+                onConfirmPasswordChange(event.target.value)
+              }
+              placeholder="Enter your password again"
+              minLength={12}
+              required
+            />
+          </>
+        )}
 
         <button className="primary-button" type="submit" disabled={busy}>
           {busy

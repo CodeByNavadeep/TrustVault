@@ -1,5 +1,4 @@
 
-import "../css/Notice.css";
 
 export default function Notice({ error, message }) {
   return (

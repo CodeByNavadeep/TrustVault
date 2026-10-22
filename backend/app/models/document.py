@@ -24,10 +24,23 @@ class Document(db.Model):
         nullable=False,
     )
 
+    category = db.Column(
+        db.String(100),
+        nullable=False,
+        default="Uncategorized",
+        server_default="Uncategorized",
+        index=True,
+    )
+
     storage_key = db.Column(
         db.String(255),
         unique=True,
         nullable=False,
+    )
+
+    file_data = db.Column(
+    db.LargeBinary,
+    nullable=True,
     )
 
     content_type = db.Column(

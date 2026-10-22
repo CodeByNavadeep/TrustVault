@@ -18,8 +18,19 @@ def register():
     if not isinstance(data, dict):
         return jsonify({"error": "Request body must be valid JSON"}), 400
 
+    name = data.get("name")
     email = data.get("email")
     password = data.get("password")
+
+    if not isinstance(name, str):
+        return jsonify({"error": "Full name is required"}), 400
+
+    name = name.strip()
+
+    if not name or len(name) > 100:
+        return jsonify({
+            "error": "Full name must be between 1 and 100 characters"
+        }), 400
 
     if not isinstance(email, str) or not isinstance(password, str):
         return jsonify({"error": "Email and password are required"}), 400
@@ -35,14 +46,17 @@ def register():
         }), 400
 
     if User.query.filter_by(email=email).first():
-        return jsonify({"error": "Unable to register with these details"}), 409
+        return jsonify({
+            "error": "Unable to register with these details"
+        }), 409
 
     user = User(
-    email=email,
-    password_hash=generate_password_hash(password),
-    role="USER",
-    is_active=True,
-    created_at=datetime.now(timezone.utc),
+        name=name,
+        email=email,
+        password_hash=generate_password_hash(password),
+        role="USER",
+        is_active=True,
+        created_at=datetime.now(timezone.utc),
     )
 
     try:
@@ -58,10 +72,10 @@ def register():
         "message": "Registration successful",
         "user": {
             "id": user.id,
+            "name": user.name,
             "email": user.email,
         },
     }), 201
-
 
 
 @auth_bp.post("/auth/login")
@@ -96,11 +110,10 @@ def login():
         "message": "Login successful",
         "user": {
             "id": user.id,
+            "name": user.name,
             "email": user.email,
         },
     }), 200
-
-
 
 
 @auth_bp.get("/auth/me")
@@ -119,12 +132,11 @@ def get_current_user():
     return jsonify({
         "user": {
             "id": user.id,
+            "name": user.name,
             "email": user.email,
             "role": user.role,
         }
     }), 200
-
-
 
 
 @auth_bp.post("/auth/logout")

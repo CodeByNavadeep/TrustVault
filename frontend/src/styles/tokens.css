@@ -1,0 +1,30 @@
+
+:root {
+  font-family: Inter, "Segoe UI", sans-serif;
+
+  color: #17263c;
+  background: #f5f7fb;
+
+  --color-navy: #17263c;
+  --color-navy-light: #243750;
+  --color-teal: #0d9488;
+  --color-teal-hover: #0f766e;
+
+  --color-background: #f5f7fb;
+  --color-surface: #ffffff;
+  --color-border: #e2e8f0;
+
+  --color-text: #17263c;
+  --color-muted: #64748b;
+  --color-danger: #dc2626;
+  --color-success: #15803d;
+
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+
+  --shadow-card: 0 4px 20px rgb(23 38 60 / 5%);
+
+  --sidebar-width: 248px;
+  --topbar-height: 72px;
+}

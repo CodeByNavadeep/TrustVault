@@ -7,7 +7,7 @@ from flask_cors import CORS
 from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
 from flask_session import Session
-from pathlib import Path
+
 
 load_dotenv()
 
@@ -18,9 +18,6 @@ server_session = Session()
 
 def create_app():
     app = Flask(__name__)
-    
-    storage_dir = Path(app.root_path).parent / "storage"
-    storage_dir.mkdir(parents=True, exist_ok=True)
 
     app.config.from_mapping(
         SQLALCHEMY_DATABASE_URI=os.environ.get("DATABASE_URL", ""),
@@ -36,9 +33,10 @@ def create_app():
         SESSION_COOKIE_SECURE=os.environ.get(
             "SESSION_COOKIE_SECURE", "false"
         ).lower() == "true",
-        SESSION_COOKIE_SAMESITE="None",
+        SESSION_COOKIE_SAMESITE=os.environ.get(
+        "SESSION_COOKIE_SAMESITE", "Lax"
+        ),
         SESSION_SERIALIZATION_FORMAT="json",
-        DOCUMENT_STORAGE_DIR=str(storage_dir),
     )
 
     secret_key = os.environ.get("FLASK_SECRET_KEY")
@@ -71,13 +69,19 @@ def create_app():
         },
         supports_credentials=True,
     )
-    
+
     from app.routes.health import health_bp
     from app.routes.auth import auth_bp
     from app.routes.documents import documents_bp
+    from app.routes.shares import shares_bp
+    from app.routes.admin import admin_bp
+    from app.routes.activity import activity_bp
 
     app.register_blueprint(health_bp, url_prefix="/api")
     app.register_blueprint(auth_bp, url_prefix="/api")
     app.register_blueprint(documents_bp, url_prefix="/api")
+    app.register_blueprint(shares_bp, url_prefix="/api")
+    app.register_blueprint(admin_bp, url_prefix="/api")
+    app.register_blueprint(activity_bp, url_prefix="/api")
 
     return app
