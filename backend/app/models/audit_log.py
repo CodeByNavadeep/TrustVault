@@ -12,6 +12,11 @@ class AuditLog(db.Model):
         primary_key=True,
     )
 
+    document_name = db.Column(
+        db.String(255),
+        nullable=True,
+    )
+
     actor_id = db.Column(
         db.Integer,
         db.ForeignKey("users.id", ondelete="SET NULL"),

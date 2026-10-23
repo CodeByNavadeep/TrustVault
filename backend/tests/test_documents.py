@@ -1,8 +1,7 @@
 from io import BytesIO
 
 from app import db
-from app.models import AuditLog, Document, User
-
+from app.models import AuditLog, Document, DocumentHistory, User
 
 def register_and_login(client, email, name="Test User"):
     response = client.post("/api/auth/register", json={
@@ -24,6 +23,7 @@ def register_and_login(client, email, name="Test User"):
 def test_document_endpoints_require_authentication(client):
     assert client.get("/api/documents").status_code == 401
     assert client.post("/api/documents").status_code == 401
+
 
 
 def test_upload_and_download_preserve_file_contents(client, app):
@@ -58,22 +58,32 @@ def test_upload_and_download_preserve_file_contents(client, app):
 
     with app.app_context():
         document = db.session.get(Document, document_id)
+
         assert document is not None
         assert document.owner_id == user_id
         assert document.file_data == file_contents
         assert document.file_size == len(file_contents)
 
-        events = AuditLog.query.filter_by(
+        # Upload events belong in the permanent document history.
+        upload_events = DocumentHistory.query.filter_by(
             document_id=document_id,
             event_type="DOCUMENT_UPLOADED",
         ).all()
-        assert len(events) == 1
 
-        download_events = AuditLog.query.filter_by(
+        assert len(upload_events) == 1
+        assert upload_events[0].document_name == "contract.txt"
+        assert upload_events[0].actor_id == user_id
+
+        # Download events also belong in the permanent document history.
+        download_events = DocumentHistory.query.filter_by(
             document_id=document_id,
             event_type="DOCUMENT_DOWNLOADED",
         ).all()
+
         assert len(download_events) == 1
+        assert download_events[0].document_name == "contract.txt"
+        assert download_events[0].actor_id == user_id
+
 
 
 
@@ -265,10 +275,10 @@ def test_revoking_access_blocks_recipient_download(app):
     assert revoke_response.status_code == 200
 
     with app.app_context():
-        revoke_event = AuditLog.query.filter_by(
-            document_id=document_id,
-            event_type="ACCESS_REVOKED",
-        ).first()
+        revoke_event = DocumentHistory.query.filter_by(
+    document_id=document_id,
+    event_type="ACCESS_REVOKED",
+).first()
 
         assert revoke_event is not None
         assert revoke_event.actor_id is not None
@@ -358,10 +368,10 @@ def test_owner_can_delete_document_and_audit_it(app):
         assert document is None
 
         # The deletion event must remain in the audit trail.
-        event = AuditLog.query.filter_by(
-            document_id=document_id,
-            event_type="DOCUMENT_DELETED",
-        ).first()
+        event = DocumentHistory.query.filter_by(
+    document_id=document_id,
+    event_type="DOCUMENT_DELETED",
+).first()
 
         assert event is not None
         assert event.actor_id == owner_id
@@ -431,11 +441,10 @@ def test_view_records_audit_and_sets_security_headers(client, app):
     ]
 
     with app.app_context():
-        event = AuditLog.query.filter_by(
-            document_id=document_id,
-            event_type="DOCUMENT_VIEWED",
-        ).first()
-
+        event = DocumentHistory.query.filter_by(
+    document_id=document_id,
+    event_type="DOCUMENT_VIEWED",
+).first()
         assert event is not None
         assert event.details["filename"] == "report.pdf"
 
@@ -468,3 +477,157 @@ def test_other_user_cannot_view_document(app):
     )
 
     assert response.status_code == 404
+
+
+def test_rename_history_is_preserved_and_owner_sees_editor_activity(app):
+    owner_client = app.test_client()
+    editor_client = app.test_client()
+
+    owner_id = register_and_login(
+        owner_client, "history-owner@example.com"
+    )
+    editor_id = register_and_login(
+        editor_client, "history-editor@example.com"
+    )
+
+    # User A uploads the original document.
+    upload_response = owner_client.post(
+        "/api/documents",
+        data={
+            "file": (
+                BytesIO(b"Permanent history test"),
+                "original.txt",
+                "text/plain",
+            ),
+            "category": "Contracts",
+        },
+        content_type="multipart/form-data",
+    )
+
+    assert upload_response.status_code == 201
+    document_id = upload_response.json["document"]["id"]
+
+    # User A grants User B edit access.
+    share_response = owner_client.post(
+        f"/api/documents/{document_id}/shares",
+        json={
+            "email": "history-editor@example.com",
+            "permission": "EDIT",
+        },
+    )
+
+    assert share_response.status_code == 201
+
+    # User B renames the document.
+    rename_response = editor_client.patch(
+        f"/api/documents/{document_id}",
+        json={"filename": "updated.txt"},
+    )
+
+    assert rename_response.status_code == 200
+
+    # Verify that the original and rename events retain their own filenames.
+    with app.app_context():
+        history = (
+            DocumentHistory.query
+            .filter_by(document_id=document_id)
+            .order_by(DocumentHistory.id.asc())
+            .all()
+        )
+
+        upload_events = [
+            event for event in history
+            if event.event_type == "DOCUMENT_UPLOADED"
+        ]
+        rename_events = [
+            event for event in history
+            if event.event_type == "DOCUMENT_RENAMED"
+        ]
+
+        assert len(upload_events) == 1
+        assert upload_events[0].document_name == "original.txt"
+        assert upload_events[0].actor_id == owner_id
+
+        assert len(rename_events) == 1
+        assert rename_events[0].document_name == "updated.txt"
+        assert rename_events[0].actor_id == editor_id
+        assert rename_events[0].details["previous_filename"] == "original.txt"
+        assert rename_events[0].details["new_filename"] == "updated.txt"
+
+    # User A should see User B's rename in the owner's activity feed.
+    activity_response = owner_client.get("/api/activity")
+
+    assert activity_response.status_code == 200
+
+    owner_activity = activity_response.json["activity"]
+
+    owner_rename_events = [
+        event for event in owner_activity
+        if event["document_id"] == document_id
+        and event["event_type"] == "DOCUMENT_RENAMED"
+    ]
+
+    assert len(owner_rename_events) == 1
+    assert owner_rename_events[0]["document_name"] == "updated.txt"
+    assert owner_rename_events[0]["actor_id"] == editor_id
+
+
+def test_document_history_survives_document_deletion(app):
+    owner_client = app.test_client()
+
+    owner_id = register_and_login(
+        owner_client, "history-delete-owner@example.com"
+    )
+
+    upload_response = owner_client.post(
+        "/api/documents",
+        data={
+            "file": (
+                BytesIO(b"Document to permanently delete"),
+                "permanent.txt",
+                "text/plain",
+            ),
+            "category": "Contracts",
+        },
+        content_type="multipart/form-data",
+    )
+
+    assert upload_response.status_code == 201
+    document_id = upload_response.json["document"]["id"]
+
+    delete_response = owner_client.delete(
+        f"/api/documents/{document_id}"
+    )
+
+    assert delete_response.status_code == 200
+
+    with app.app_context():
+        # The document itself must be deleted.
+        document = db.session.get(Document, document_id)
+        assert document is None
+
+        # Its permanent history must remain available.
+        history = (
+            DocumentHistory.query
+            .filter_by(document_id=document_id)
+            .order_by(DocumentHistory.id.asc())
+            .all()
+        )
+
+        upload_events = [
+            event for event in history
+            if event.event_type == "DOCUMENT_UPLOADED"
+        ]
+        delete_events = [
+            event for event in history
+            if event.event_type == "DOCUMENT_DELETED"
+        ]
+
+        assert len(upload_events) == 1
+        assert upload_events[0].document_name == "permanent.txt"
+        assert upload_events[0].actor_id == owner_id
+
+        assert len(delete_events) == 1
+        assert delete_events[0].document_name == "permanent.txt"
+        assert delete_events[0].actor_id == owner_id
+        assert delete_events[0].details["filename"] == "permanent.txt"

@@ -1,8 +1,9 @@
-
 from flask import Blueprint, jsonify, request, session
 
+from sqlalchemy import or_
+
 from app import db
-from app.models import AuditLog, Document, User
+from app.models import DocumentHistory, User
 
 activity_bp = Blueprint("activity", __name__)
 
@@ -31,47 +32,56 @@ def get_my_activity():
     limit = min(limit, 100)
 
     rows = (
-        db.session.query(AuditLog, Document.original_filename)
-        .outerjoin(Document, AuditLog.document_id == Document.id)
-        .filter(AuditLog.actor_id == user.id)
-        .order_by(AuditLog.id.desc())
+        DocumentHistory.query
+        .filter(
+            or_(
+                DocumentHistory.actor_id == user.id,
+                DocumentHistory.owner_id == user.id,
+            )
+        )
+        .order_by(
+            DocumentHistory.created_at.desc(),
+            DocumentHistory.id.desc(),
+        )
         .limit(limit)
         .all()
     )
 
+    activity = []
+
+    for event in rows:
+        details = dict(event.details or {})
+        recipient_id = details.pop(
+            "recipient_id",
+            details.pop("recipientId", None),
+        )
+
+        recipient_email = details.get("recipient_email")
+
+        if not recipient_email and recipient_id is not None:
+            recipient = db.session.get(User, recipient_id)
+            if recipient is not None:
+                recipient_email = recipient.email
+
+        if recipient_email:
+            details["recipient_email"] = recipient_email
+
+        activity.append({
+            "id": event.id,
+            "document_id": event.document_id,
+            "document_name": event.document_name,
+            "event_type": event.event_type,
+            "actor_id": event.actor_id,
+            "details": details,
+            "created_at": (
+                event.created_at.isoformat()
+                if event.created_at
+                else None
+            ),
+        })
+
     return jsonify({
-        "activity": [
-            {
-                "id": log.id,
-                "document_id": log.document_id,
-                "document_name": (
-                    filename if filename else "Document unavailable"
-                ),
-                "event_type": log.event_type,
-                "details": {
-                    key: value
-                    for key, value in (log.details or {}).items()
-                    if key not in {"recipient_id", "recipientId"}
-                } | {
-                    "recipient_email": (
-                        (log.details or {}).get("recipient_email")
-                        or (
-                            db.session.get(User, (log.details or {}).get("recipient_id")).email
-                            if (log.details or {}).get("recipient_id") is not None
-                            and db.session.get(User, (log.details or {}).get("recipient_id"))
-                            else None
-                        )
-                    )
-                } if (log.details or {}).get("recipient_id") is not None
-                else (log.details or {}),
-                "created_at": (
-                    log.created_at.isoformat()
-                    if log.created_at
-                    else None
-                ),
-            }
-            for log, filename in rows
-        ],
-        "count": len(rows),
+        "activity": activity,
+        "count": len(activity),
         "limit": limit,
     }), 200

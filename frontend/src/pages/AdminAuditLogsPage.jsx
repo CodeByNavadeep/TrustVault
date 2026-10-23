@@ -6,6 +6,7 @@ import {
     FileText,
     RefreshCw,
     ShieldCheck,
+    UserRound,
 } from "lucide-react";
 
 import { api } from "../services/api";
@@ -70,13 +71,84 @@ function formatDetails(details) {
     );
 }
 
+function ActivityTable({ rows, authentication = false }) {
+    if (rows.length === 0) {
+        return (
+            <div className="empty-state">
+                {authentication ? <UserRound size={30} /> : <ShieldCheck size={30} />}
+                <h3>
+                    No {authentication ? "authentication" : "document"} activity found
+                </h3>
+                <p>Try changing or clearing your filters.</p>
+            </div>
+        );
+    }
+
+    return (
+        <div className="activity-table-wrapper">
+            <table className="activity-table">
+                <thead>
+                    <tr>
+                        <th>Action</th>
+                        <th>User</th>
+                        {authentication ? (
+                            <th>Email</th>
+                        ) : (
+                            <th>Document</th>
+                        )}
+                        <th>Date &amp; time</th>
+                        <th>Details</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    {rows.map((log) => {
+                        const EventIcon = authentication
+                            ? UserRound
+                            : getEventIcon(log.event_type);
+
+                        return (
+                            <tr key={log.id}>
+                                <td>
+                                    <span className="activity-action">
+                                        <EventIcon size={16} />
+                                        <span>{formatEventType(log.event_type)}</span>
+                                    </span>
+                                </td>
+
+                                <td>{log.actor_name || "Unknown user"}</td>
+
+                                <td>
+                                    {authentication
+                                        ? log.actor_email || "Email unavailable"
+                                        : log.document_name || "—"}
+                                </td>
+
+                                <td>{formatDate(log.created_at)}</td>
+
+                                <td>
+                                    <div className="activity-details">
+                                        {formatDetails(log.details)}
+                                    </div>
+                                </td>
+                            </tr>
+                        );
+                    })}
+                </tbody>
+            </table>
+        </div>
+    );
+}
 
 function AdminAuditLogsPage() {
-    const [logs, setLogs] = useState([]);
+    const [documentActivity, setDocumentActivity] = useState([]);
+    const [authenticationActivity, setAuthenticationActivity] = useState([]);
+
     const [eventType, setEventType] = useState("");
     const [actorName, setActorName] = useState("");
     const [documentName, setDocumentName] = useState("");
     const [limit, setLimit] = useState("50");
+
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
 
@@ -92,7 +164,8 @@ function AdminAuditLogsPage() {
                 limit,
             });
 
-            setLogs(data.audit_logs || []);
+            setDocumentActivity(data.document_activity || []);
+            setAuthenticationActivity(data.authentication_activity || []);
         } catch (err) {
             setError(err.message || "Couldn't load audit logs.");
         } finally {
@@ -106,17 +179,21 @@ function AdminAuditLogsPage() {
 
     function clearFilters() {
         setEventType("");
-        setActorId("");
-        setDocumentId("");
+        setActorName("");
+        setDocumentName("");
         setLimit("50");
     }
+
+    const totalCount = documentActivity.length + authenticationActivity.length;
 
     return (
         <section className="page-section">
             <div className="page-header">
                 <div>
                     <h1>Audit Logs</h1>
-                    <p>Monitor recorded document and access events across TrustVault.</p>
+                    <p>
+                        Monitor document activity and authentication events across TrustVault.
+                    </p>
                 </div>
 
                 <button
@@ -170,7 +247,7 @@ function AdminAuditLogsPage() {
                 </div>
 
                 <div className="audit-filter-field">
-                    <label htmlFor="audit-limit">Results</label>
+                    <label htmlFor="audit-limit">Results per table</label>
                     <select
                         id="audit-limit"
                         value={limit}
@@ -208,64 +285,48 @@ function AdminAuditLogsPage() {
                 </div>
             )}
 
-            {!loading && !error && logs.length === 0 && (
-                <div className="empty-state">
-                    <ShieldCheck size={30} />
-                    <h2>No audit logs found</h2>
-                    <p>Try changing or clearing your filters.</p>
-                </div>
-            )}
+            {!error && (
+                <>
+                    <section className="audit-section">
+                        <div className="page-header">
+                            <div>
+                                <h2>Document Activity</h2>
+                                <p>
+                                    Uploads, views, downloads, renames, deletions, and access changes.
+                                </p>
+                            </div>
+                            <span className="activity-count">
+                                {documentActivity.length} events
+                            </span>
+                        </div>
 
-            {logs.length > 0 && (
-                <div className="activity-table-wrapper">
-                    <table className="activity-table">
-                        <thead>
-                            <tr>
-                                <th>Action</th>
-                                <th>Actor</th>
-                                <th>Document</th>
-                                <th>Date &amp; time</th>
-                                <th>Details</th>
-                            </tr>
-                        </thead>
+                        <ActivityTable rows={documentActivity} />
+                    </section>
 
-                        <tbody>
-                            {logs.map((log) => {
-                                const EventIcon = getEventIcon(log.event_type);
+                    <section className="audit-section">
+                        <div className="page-header">
+                            <div>
+                                <h2>Authentication Activity</h2>
+                                <p>Account registration and login events.</p>
+                            </div>
+                            <span className="activity-count">
+                                {authenticationActivity.length} events
+                            </span>
+                        </div>
 
-                                return (
-                                    <tr key={log.id}>
-                                        <td>
-                                            <span className="activity-action">
-                                                <EventIcon size={16} />
-                                                <span>{formatEventType(log.event_type)}</span>
-                                            </span>
-                                        </td>
-
-                                        <td>{log.actor_name || "Unknown user"}</td>
-
-                                        <td>{log.document_name || "—"}</td>
-
-                                        <td>{formatDate(log.created_at)}</td>
-
-                                        <td>
-                                            <div className="activity-details">
-                                                {formatDetails(log.details)}
-                                            </div>
-                                        </td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
-                </div>
+                        <ActivityTable
+                            rows={authenticationActivity}
+                            authentication
+                        />
+                    </section>
+                </>
             )}
 
             {loading && <p>Loading audit logs...</p>}
 
-            {!loading && !error && logs.length > 0 && (
+            {!loading && !error && (
                 <p className="activity-count">
-                    Showing {logs.length} audit event{logs.length === 1 ? "" : "s"}
+                    Showing {totalCount} events across both tables
                 </p>
             )}
         </section>

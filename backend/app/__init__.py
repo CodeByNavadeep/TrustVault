@@ -69,6 +69,7 @@ def create_app(test_config=None):
             r"/api/*": {
                 "origins": [
                     "http://localhost:5173",
+                    "http://localhost:5174",
                     frontend_origin,
                 ]
             }

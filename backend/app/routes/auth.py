@@ -7,6 +7,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 
 from app import db
 from app.models import User
+from app.audit import record_audit_event
 
 auth_bp = Blueprint("auth", __name__)
 
@@ -61,12 +62,27 @@ def register():
 
     try:
         db.session.add(user)
+        db.session.flush()
+
+        record_audit_event(
+            event_type="USER_REGISTERED",
+            actor_id=user.id,
+            details={},
+        )
+
         db.session.commit()
+
     except IntegrityError:
         db.session.rollback()
         return jsonify({
             "error": "Unable to register with these details"
         }), 409
+
+    except Exception:
+        db.session.rollback()
+        return jsonify({
+            "error": "Unable to complete registration"
+        }), 500
 
     return jsonify({
         "message": "Registration successful",
@@ -101,6 +117,22 @@ def login():
         or not check_password_hash(user.password_hash, password)
     ):
         return jsonify({"error": "Invalid email or password"}), 401
+
+    # Record successful login without storing credentials.
+    try:
+        record_audit_event(
+            event_type="USER_LOGIN",
+            actor_id=user.id,
+            details={},
+        )
+        db.session.commit()
+
+    except Exception:
+        db.session.rollback()
+        session.clear()
+        return jsonify({
+            "error": "Unable to complete login"
+        }), 500
 
     # Discard any previous session identity before logging in.
     session.clear()
