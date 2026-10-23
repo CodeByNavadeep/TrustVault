@@ -36,6 +36,41 @@ function formatDate(dateString) {
   return date.toLocaleString();
 }
 
+
+function formatDetailKey(key = "") {
+  return key
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function formatDetails(details) {
+  if (!details || typeof details !== "object") {
+    return details ? String(details) : "No additional details";
+  }
+
+  const entries = Object.entries(details);
+
+  if (entries.length === 0) return "No additional details";
+
+  return entries
+    .filter(([key]) => !["recipient_id", "recipientId"].includes(key))
+    .map(([key, value]) => {
+      const label = formatDetailKey(key);
+
+      if (value === null || value === undefined || value === "") {
+        return `${label}: —`;
+      }
+
+      if (typeof value === "object") {
+        return `${label}: ${JSON.stringify(value)}`;
+      }
+
+      return `${label}: ${String(value)}`;
+    })
+    .join(" · ") || "No additional details";
+}
+
+
 function ActivityPage() {
   const [activity, setActivity] = useState([]);
   const [eventFilter, setEventFilter] = useState("ALL");
@@ -160,18 +195,15 @@ function ActivityPage() {
                     </td>
 
                     <td>
-                        {item.document_name || "—"}
+                      {item.document_name || "—"}
                     </td>
 
                     <td>{formatDate(item.created_at)}</td>
 
                     <td>
-                      <details className="activity-details">
-                        <summary>View</summary>
-                        <pre>
-                          {JSON.stringify(item.details || {}, null, 2)}
-                        </pre>
-                      </details>
+                      <div className="activity-details">
+                        {formatDetails(item.details)}
+                      </div>
                     </td>
                   </tr>
                 );

@@ -4,3 +4,5 @@ __pycache__/
 .pytest_cache/
 # Private uploaded documents
 storage/
+# Flask-Session generated files
+/flask_session/

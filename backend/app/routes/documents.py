@@ -344,7 +344,6 @@ def download_document(document_id):
 
 
 
-
 @documents_bp.get("/documents/<int:document_id>/view")
 def view_document(document_id):
     user_id = session.get("user_id")
@@ -385,6 +384,7 @@ def view_document(document_id):
         ".jpeg": "image/jpeg",
         ".gif": "image/gif",
         ".webp": "image/webp",
+        ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     }
 
     content_type = allowed_types.get(extension)

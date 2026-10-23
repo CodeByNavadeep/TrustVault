@@ -1,6 +1,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Files, ShieldCheck, UploadCloud, X } from "lucide-react";
+import { renderAsync } from "docx-preview";
 
 import "./styles/global.css";
 import AppLayout from "./layouts/AppLayout";
@@ -257,44 +258,83 @@ function App() {
     }
   }
 
-  async function handleView(document) {
-    setError("");
-    setMessage("");
 
-    const previewWindow = window.open("about:blank", "_blank");
+async function handleView(document) {
+  setError("");
+  setMessage("");
 
-    if (!previewWindow) {
-      setError("The preview was blocked. Allow pop-ups and try again.");
-      return;
-    }
+  const previewWindow = window.open("about:blank", "_blank");
 
-    try {
-      const response = await api.viewDocument(document.id);
+  if (!previewWindow) {
+    setError("The preview was blocked. Allow pop-ups and try again.");
+    return;
+  }
 
-      if (!response.ok) {
-        let details = null;
+  try {
+    const response = await api.viewDocument(document.id);
 
-        try {
-          details = await response.json();
-        } catch {
-          // The server may return a non-JSON error.
-        }
+    if (!response.ok) {
+      let details = null;
 
-        throw new Error(
-          details?.error || `Preview failed (${response.status})`
-        );
+      try {
+        details = await response.json();
+      } catch {
+        // The server may return a non-JSON error.
       }
 
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
+      throw new Error(
+        details?.error || `Preview failed (${response.status})`
+      );
+    }
 
+    const blob = await response.blob();
+    const filename = document.original_filename || document.filename || "";
+    const isDocx = filename.toLowerCase().endsWith(".docx");
+
+    if (isDocx) {
+      const html = previewWindow.document;
+
+      html.open();
+      html.write(`<!DOCTYPE html>
+        <html lang="en">
+          <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>Document Preview</title>
+            <style>
+              body {
+                margin: 0;
+                padding: 24px;
+                background: #f3f4f6;
+                font-family: Arial, sans-serif;
+              }
+              #docx-container {
+                max-width: 1000px;
+                margin: 0 auto;
+                background: white;
+                padding: 24px;
+                overflow-x: auto;
+              }
+            </style>
+          </head>
+          <body>
+            <div id="docx-container"></div>
+          </body>
+        </html>`);
+      html.close();
+
+      await renderAsync(blob, html.getElementById("docx-container"));
+    } else {
+      const url = URL.createObjectURL(blob);
       previewWindow.location.href = url;
       window.setTimeout(() => URL.revokeObjectURL(url), 60000);
-    } catch (err) {
-      previewWindow.close();
-      setError(err.message);
     }
+  } catch (err) {
+    previewWindow.close();
+    setError(err.message || "Unable to preview this document.");
   }
+}
+
 
   async function handleDelete(document) {
     const confirmed = window.confirm(

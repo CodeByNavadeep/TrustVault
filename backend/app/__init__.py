@@ -16,7 +16,7 @@ migrate = Migrate()
 server_session = Session()
 
 
-def create_app():
+def create_app(test_config=None):
     app = Flask(__name__)
 
     app.config.from_mapping(
@@ -39,7 +39,13 @@ def create_app():
         SESSION_SERIALIZATION_FORMAT="json",
     )
 
-    secret_key = os.environ.get("FLASK_SECRET_KEY")
+    if test_config:
+        app.config.update(test_config)
+
+    secret_key = app.config.get("SECRET_KEY") or os.environ.get(
+    "FLASK_SECRET_KEY"
+    )
+
     if not secret_key:
         raise RuntimeError("FLASK_SECRET_KEY must be configured")
 

@@ -35,6 +35,42 @@ function formatDate(dateString) {
         : date.toLocaleString();
 }
 
+function formatDetailKey(key = "") {
+    return key
+        .replace(/_/g, " ")
+        .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function formatDetails(details) {
+    if (!details || typeof details !== "object") {
+        return details ? String(details) : "No additional details";
+    }
+
+    const entries = Object.entries(details);
+
+    if (entries.length === 0) return "No additional details";
+
+    return (
+        entries
+            .filter(([key]) => !["recipient_id", "recipientId"].includes(key))
+            .map(([key, value]) => {
+                const label = formatDetailKey(key);
+
+                if (value === null || value === undefined || value === "") {
+                    return `${label}: —`;
+                }
+
+                if (typeof value === "object") {
+                    return `${label}: ${JSON.stringify(value)}`;
+                }
+
+                return `${label}: ${String(value)}`;
+            })
+            .join(" · ") || "No additional details"
+    );
+}
+
+
 function AdminAuditLogsPage() {
     const [logs, setLogs] = useState([]);
     const [eventType, setEventType] = useState("");
@@ -213,12 +249,9 @@ function AdminAuditLogsPage() {
                                         <td>{formatDate(log.created_at)}</td>
 
                                         <td>
-                                            <details className="activity-details">
-                                                <summary>View</summary>
-                                                <pre>
-                                                    {JSON.stringify(log.details || {}, null, 2)}
-                                                </pre>
-                                            </details>
+                                            <div className="activity-details">
+                                                {formatDetails(log.details)}
+                                            </div>
                                         </td>
                                     </tr>
                                 );

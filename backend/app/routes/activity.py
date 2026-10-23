@@ -48,7 +48,22 @@ def get_my_activity():
                     filename if filename else "Document unavailable"
                 ),
                 "event_type": log.event_type,
-                "details": log.details or {},
+                "details": {
+                    key: value
+                    for key, value in (log.details or {}).items()
+                    if key not in {"recipient_id", "recipientId"}
+                } | {
+                    "recipient_email": (
+                        (log.details or {}).get("recipient_email")
+                        or (
+                            db.session.get(User, (log.details or {}).get("recipient_id")).email
+                            if (log.details or {}).get("recipient_id") is not None
+                            and db.session.get(User, (log.details or {}).get("recipient_id"))
+                            else None
+                        )
+                    )
+                } if (log.details or {}).get("recipient_id") is not None
+                else (log.details or {}),
                 "created_at": (
                     log.created_at.isoformat()
                     if log.created_at

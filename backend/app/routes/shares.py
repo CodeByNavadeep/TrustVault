@@ -199,6 +199,9 @@ def revoke_document_access(document_id, recipient_id):
             document_id=document.id,
             details={
                 "recipient_id": grant.recipient_id,
+                "recipient_email": db.session.get(
+                    User, grant.recipient_id
+                ).email,
                 "permission": grant.permission,
             },
         )
