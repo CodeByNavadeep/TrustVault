@@ -95,15 +95,11 @@ The health endpoint has previously returned a successful service status. Verify 
 
 ### Demo accounts
 
-Do not publish guessed or placeholder passwords as if they work. Before submission, create or verify one account for each required role and put the real demo credentials in this section. Use non-sensitive challenge-only passwords and rotate them if they are exposed elsewhere.
-
 | Role | Email | Password | Verification |
 |---|---|---|---|
 | ADMIN | `admin@gmail.com` | `admin@123456789` | Must be tested on live deployment |
 | OWNER | `gnavadeep512@gmail.com` | `nav@123456789` | Must be tested on live deployment |
 | VIEWER | `abdulgaffarshaik.ai@gmail.com` | `Gaffar@123456789` | Must be tested on live deployment |
-
-Before publishing, replace every placeholder and test each account in a clean browser session. Never reuse a personal password.
 
 ## Local setup
 
@@ -117,7 +113,7 @@ Before publishing, replace every placeholder and test each account in a clean br
 ### 1. Clone the repository
 
 ```powershell
-git clone <PUBLIC_GITHUB_REPOSITORY_URL>
+git clone https://github.com/CodeByNavadeep/TrustVault
 cd TrustVault
 ```
 
@@ -203,25 +199,24 @@ Suggested test data (use fictional data only):
 
 | Account | Role | Purpose |
 |---|---|---|
-| Alice Owner | OWNER or regular user acting as owner | Upload and manage a private file |
-| Ben Viewer | VIEWER or regular user with an explicit grant | Test granted and revoked access |
+| Navadeep Owner | OWNER or regular user acting as owner | Upload and manage a private file |
+| Gaffar Viewer | VIEWER or regular user with an explicit grant | Test granted and revoked access |
 | Casey Outsider | regular user with no grant | Test denied direct access |
-| Dana Admin | ADMIN | Inspect audit records |
+| Admin | ADMIN | Inspect audit records |
 
 Suggested documents:
-- `Alice-Contract.pdf` — private document owned by Alice.
+- `Navadeep-Contract.pdf` — private document owned by Navadeep.
 - `Project-Notes.txt` — test unsupported/allowed upload behavior according to the implemented validation.
 - `Demo-Image.png` — test supported inline image viewing.
 
-These are **test-data suggestions, not pre-created accounts or documents**. Create the accounts using the application, assign privileged roles through a controlled database/setup procedure, and grant only the intended document permission. Do not make a user an admin by passing `"role": "ADMIN"` during public registration.
 
 ### Required manual scenarios
 
 1. Register a normal user and log in.
 2. Upload a small harmless test file and verify it appears in the owner's list.
 3. Log in as another user and try to list, view, download, rename, and delete the owner's document by ID. Each operation must be denied unless that user has a valid grant.
-4. Grant read access to Ben and verify he can read only the granted document.
-5. Revoke Ben's grant and retry the same view/download request immediately; it must be denied.
+4. Grant read access to Gaffar and verify he can read only the granted document.
+5. Revoke Gaffar's grant and retry the same view/download request immediately; it must be denied.
 6. Verify an outsider cannot read or download the document.
 7. Attempt an invalid login and verify `USER_LOGIN_DENIED` appears in the admin audit view.
 8. Use a normal user session to call an admin-only endpoint and verify a `403` plus an `ADMIN_ACCESS_DENIED` event.
