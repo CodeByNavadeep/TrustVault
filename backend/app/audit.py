@@ -1,6 +1,10 @@
 
+from flask import current_app
+
 from app import db
 from app.models import AuditLog, Document, DocumentHistory, User
+from sqlalchemy.orm import Session as SQLAlchemySession
+from sqlalchemy.exc import SQLAlchemyError
 
 
 DOCUMENT_EVENT_TYPES = {
@@ -94,3 +98,65 @@ def record_audit_event(event_type, actor_id, document_id=None, details=None):
     )
     db.session.add(event)
     return event
+
+
+def record_security_denial(
+    *,
+    event_type,
+    actor_id=None,
+    actor_label=None,
+    document_id=None,
+    owner_id=None,
+    reason,
+    status_code,
+    endpoint,
+    method,
+):
+    """
+    Persist a denied security attempt independently of the
+    current request's database transaction.
+    """
+    details = {
+        "outcome": "DENIED",
+        "actor_label": actor_label or (
+            "UNKNOWN" if actor_id is not None else "ANONYMOUS"
+        ),
+        "reason": reason,
+        "endpoint": endpoint,
+        "method": method,
+        "status_code": status_code,
+    }
+
+    if document_id is not None:
+        details["attempted_document_id"] = document_id
+
+    if owner_id is not None:
+        details["document_owner_id"] = owner_id
+
+    try:
+        with SQLAlchemySession(bind=db.engine) as audit_session:
+
+            if actor_id is not None and not actor_label:
+                actor = audit_session.get(User, actor_id)
+
+                if actor is not None:
+                    actor_label = actor.name or "UNKNOWN"
+
+            details["actor_label"] = actor_label or (
+                "UNKNOWN" if actor_id is not None else "ANONYMOUS"
+            )
+
+            audit_session.add(
+                AuditLog(
+                    event_type=event_type,
+                    actor_id=actor_id,
+                    document_id=None,
+                    details=details,
+                )
+            )
+            audit_session.commit()
+
+    except SQLAlchemyError:
+        current_app.logger.exception(
+            "Failed to persist security-denial audit event"
+        )

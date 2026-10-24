@@ -10,10 +10,30 @@ from datetime import date
 from app import db
 from app.models import Document, DocumentGrant, User
 from app.permissions import get_document_access
-from app.audit import record_audit_event
+from app.audit import record_audit_event, record_security_denial
 
 documents_bp = Blueprint("documents", __name__)
 
+def log_document_denial(
+    *,
+    event_type,
+    reason,
+    status_code,
+    actor_id=None,
+    document_id=None,
+    owner_id=None,
+):
+    record_security_denial(
+        event_type=event_type,
+        actor_id=actor_id,
+        actor_label="ANONYMOUS" if actor_id is None else None,
+        document_id=document_id,
+        owner_id=owner_id,
+        reason=reason,
+        status_code=status_code,
+        endpoint=request.endpoint or request.path,
+        method=request.method,
+    )
 
 
 @documents_bp.get("/documents")
@@ -21,11 +41,22 @@ def list_documents():
     user_id = session.get("user_id")
 
     if user_id is None:
+        log_document_denial(
+            event_type="DOCUMENT_LIST_DENIED",
+            reason="Authentication required",
+            status_code=401,
+        )
         return jsonify({"error": "Authentication required"}), 401
 
     user = db.session.get(User, user_id)
 
     if user is None or not user.is_active:
+        log_document_denial(
+            event_type="DOCUMENT_LIST_DENIED",
+            reason="Invalid or inactive session",
+            status_code=401,
+            actor_id=user_id,
+        )
         session.clear()
         return jsonify({"error": "Authentication required"}), 401
 
@@ -181,11 +212,22 @@ def upload_document():
     user_id = session.get("user_id")
 
     if user_id is None:
+        log_document_denial(
+            event_type="DOCUMENT_UPLOAD_DENIED",
+            reason="Authentication required",
+            status_code=401,
+        )
         return jsonify({"error": "Authentication required"}), 401
 
     user = db.session.get(User, user_id)
 
     if user is None or not user.is_active:
+        log_document_denial(
+            event_type="DOCUMENT_UPLOAD_DENIED",
+            reason="Invalid or inactive session",
+            status_code=401,
+            actor_id=user_id,
+        )
         session.clear()
         return jsonify({"error": "Authentication required"}), 401
 
@@ -275,26 +317,45 @@ def upload_document():
     }), 201
 
 
+
 @documents_bp.get("/documents/<int:document_id>/download")
 def download_document(document_id):
     user_id = session.get("user_id")
 
     if user_id is None:
+        log_document_denial(
+            event_type="DOCUMENT_DOWNLOAD_DENIED",
+            reason="Authentication required",
+            status_code=401,
+        )
         return jsonify({"error": "Authentication required"}), 401
 
     user = db.session.get(User, user_id)
 
     if user is None or not user.is_active:
+        log_document_denial(
+            event_type="DOCUMENT_DOWNLOAD_DENIED",
+            reason="Invalid or inactive session",
+            status_code=401,
+            actor_id=user_id,
+        )
         session.clear()
         return jsonify({"error": "Authentication required"}), 401
 
     document, permission = get_document_access(
-    document_id,
-    user,
+        document_id,
+        user,
     )
 
-    # Do not reveal whether another user's document exists.
+    # Do not reveal whether an inaccessible document exists.
     if document is None:
+        log_document_denial(
+            event_type="DOCUMENT_DOWNLOAD_DENIED",
+            reason="Document missing or access not granted",
+            status_code=404,
+            actor_id=user.id,
+            document_id=document_id,
+        )
         return jsonify({"error": "Document not found"}), 404
 
     if document.file_data is None:
@@ -331,6 +392,7 @@ def download_document(document_id):
             },
         )
         db.session.commit()
+
     except SQLAlchemyError:
         db.session.rollback()
         current_app.logger.exception(
@@ -344,25 +406,46 @@ def download_document(document_id):
 
 
 
+
+
 @documents_bp.get("/documents/<int:document_id>/view")
 def view_document(document_id):
     user_id = session.get("user_id")
 
     if user_id is None:
+        log_document_denial(
+            event_type="DOCUMENT_VIEW_DENIED",
+            reason="Authentication required",
+            status_code=401,
+        )
         return jsonify({"error": "Authentication required"}), 401
 
     user = db.session.get(User, user_id)
 
     if user is None or not user.is_active:
+        log_document_denial(
+            event_type="DOCUMENT_VIEW_DENIED",
+            reason="Invalid or inactive session",
+            status_code=401,
+            actor_id=user_id,
+        )
         session.clear()
         return jsonify({"error": "Authentication required"}), 401
 
     document, permission = get_document_access(
-    document_id,
-    user,
+        document_id,
+        user,
     )
 
+    # Keep the response identical for missing and inaccessible documents.
     if document is None:
+        log_document_denial(
+            event_type="DOCUMENT_VIEW_DENIED",
+            reason="Document missing or access not granted",
+            status_code=404,
+            actor_id=user.id,
+            document_id=document_id,
+        )
         return jsonify({"error": "Document not found"}), 404
 
     if document.file_data is None:
@@ -384,7 +467,10 @@ def view_document(document_id):
         ".jpeg": "image/jpeg",
         ".gif": "image/gif",
         ".webp": "image/webp",
-        ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        ".docx": (
+            "application/vnd.openxmlformats-officedocument."
+            "wordprocessingml.document"
+        ),
     }
 
     content_type = allowed_types.get(extension)
@@ -416,7 +502,6 @@ def view_document(document_id):
         "form-action 'none'; "
         "frame-ancestors 'none'"
     )
-
     response.headers["Cache-Control"] = "private, no-store"
 
     try:
@@ -429,6 +514,7 @@ def view_document(document_id):
             },
         )
         db.session.commit()
+
     except SQLAlchemyError:
         db.session.rollback()
         current_app.logger.exception(
@@ -442,55 +528,70 @@ def view_document(document_id):
 
 
 
+
 @documents_bp.patch("/documents/<int:document_id>")
 def update_document_metadata(document_id):
     user_id = session.get("user_id")
 
     if user_id is None:
+        log_document_denial(
+            event_type="DOCUMENT_RENAME_DENIED",
+            reason="Authentication required",
+            status_code=401,
+        )
         return jsonify({"error": "Authentication required"}), 401
 
     user = db.session.get(User, user_id)
 
     if user is None or not user.is_active:
+        log_document_denial(
+            event_type="DOCUMENT_RENAME_DENIED",
+            reason="Invalid or inactive session",
+            status_code=401,
+            actor_id=user_id,
+        )
         session.clear()
         return jsonify({"error": "Authentication required"}), 401
 
     document, permission = get_document_access(document_id, user)
 
-    # Do not reveal whether an inaccessible document exists.
     if document is None:
+        log_document_denial(
+            event_type="DOCUMENT_RENAME_DENIED",
+            reason="Document missing or access not granted",
+            status_code=404,
+            actor_id=user.id,
+            document_id=document_id,
+        )
         return jsonify({"error": "Document not found"}), 404
 
-    # Only the owner or an EDIT recipient can modify metadata.
-    if permission not in ("OWNER", "EDIT"):
+    if permission not in {"OWNER", "EDIT"}:
+        log_document_denial(
+            event_type="DOCUMENT_RENAME_DENIED",
+            reason="Edit permission required",
+            status_code=403,
+            actor_id=user.id,
+            document_id=document.id,
+            owner_id=document.owner_id,
+        )
         return jsonify({"error": "Edit permission required"}), 403
 
-    data = request.get_json(silent=True)
+    payload = request.get_json(silent=True)
 
-    if not isinstance(data, dict):
-        return jsonify({"error": "A JSON object is required"}), 400
-
-    # Reject unexpected fields instead of silently accepting them.
-    if set(data.keys()) != {"filename"}:
+    if not isinstance(payload, dict) or set(payload) != {"filename"}:
         return jsonify({
             "error": "Provide only the filename field"
         }), 400
 
-    filename = data.get("filename")
+    filename = payload.get("filename")
 
-    if not isinstance(filename, str):
-        return jsonify({"error": "Filename must be a string"}), 400
+    if not isinstance(filename, str) or not filename.strip():
+        return jsonify({"error": "Filename is required"}), 400
 
     filename = secure_filename(filename.strip())
 
     if not filename:
         return jsonify({"error": "Invalid filename"}), 400
-
-    if len(filename) > 255:
-        return jsonify({
-            "error": "Filename must be 255 characters or fewer"
-        }), 400
-
 
     old_filename = document.original_filename
     document.original_filename = filename
@@ -501,30 +602,27 @@ def update_document_metadata(document_id):
             actor_id=user.id,
             document_id=document.id,
             details={
-                "previous_filename": old_filename,
+                "old_filename": old_filename,
                 "new_filename": filename,
             },
         )
-
         db.session.commit()
 
     except SQLAlchemyError:
         db.session.rollback()
         current_app.logger.exception(
-            "Document metadata update failed"
+            "Document rename audit recording failed"
         )
-        return jsonify({
-            "error": "Document metadata update failed"
-        }), 500
+        return jsonify({"error": "Unable to rename document"}), 500
 
     return jsonify({
-        "message": "Document metadata updated successfully",
+        "message": "Document renamed successfully",
         "document": {
             "id": document.id,
             "filename": document.original_filename,
-            "previous_filename": old_filename,
         },
     }), 200
+
 
 
 @documents_bp.delete("/documents/<int:document_id>")
@@ -532,11 +630,22 @@ def delete_document(document_id):
     user_id = session.get("user_id")
 
     if user_id is None:
+        log_document_denial(
+            event_type="DOCUMENT_DELETE_DENIED",
+            reason="Authentication required",
+            status_code=401,
+        )
         return jsonify({"error": "Authentication required"}), 401
 
     user = db.session.get(User, user_id)
 
     if user is None or not user.is_active:
+        log_document_denial(
+            event_type="DOCUMENT_DELETE_DENIED",
+            reason="Invalid or inactive session",
+            status_code=401,
+            actor_id=user_id,
+        )
         session.clear()
         return jsonify({"error": "Authentication required"}), 401
 
@@ -545,20 +654,24 @@ def delete_document(document_id):
         owner_id=user.id,
     ).first()
 
-    # Do not reveal whether another user's document exists.
     if document is None:
+        log_document_denial(
+            event_type="DOCUMENT_DELETE_DENIED",
+            reason="Document missing or user is not the owner",
+            status_code=404,
+            actor_id=user.id,
+            document_id=document_id,
+        )
         return jsonify({"error": "Document not found"}), 404
 
-
     try:
+        # Record the deletion before deleting the document.
         record_audit_event(
             event_type="DOCUMENT_DELETED",
             actor_id=user.id,
             document_id=document.id,
             details={
-                "deleted_document_id": document.id,
                 "filename": document.original_filename,
-                "file_size": document.file_size,
             },
         )
 
@@ -567,10 +680,12 @@ def delete_document(document_id):
 
     except SQLAlchemyError:
         db.session.rollback()
-        current_app.logger.exception("Document deletion failed")
+        current_app.logger.exception(
+            "Document deletion or audit recording failed"
+        )
         return jsonify({"error": "Unable to delete document"}), 500
 
-
     return jsonify({
-        "message": "Document deleted successfully"
+        "message": "Document deleted successfully",
+        "document_id": document_id,
     }), 200

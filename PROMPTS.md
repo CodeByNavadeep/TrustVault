@@ -1,296 +1,165 @@
-# TrustVault AI Development Log
+# PROMPTS.md — How I used AI while building TrustVault
 
-## Reusable Project Instructions
+I used ChatGPT as a coding partner and explainer during the project. I did not blindly accept every suggestion. I asked questions, tried the changes locally, checked browser/Postman behavior, inspected PostgreSQL, and changed the design when the first approach failed.
 
-### Project Context
+This log is based on the work and conversations during the project. Dates are the dates visible in the project conversation history; before submission, link each entry to the real commit that contains the change. I have not invented commit hashes or GitHub links.
 
-- **Project:** TrustVault — security-first document sharing.
-- **Backend:** Python, Flask, Flask-SQLAlchemy.
-- **Frontend:** React, Vite, JavaScript.
-- **Database:** PostgreSQL.
-- **Authentication:** Server-side sessions with Flask-Session.
-- **Database migrations:** Flask-Migrate.
-- **Development environment:** Windows, PowerShell, Python virtual environment.
-- **Local backend command:** Run `python app.py` from the `backend` directory with the virtual environment activated.
+## Reusable project instructions I kept giving the AI
 
-### Rules for AI-Assisted Development
-
-1. Prioritize authentication, authorization, private file storage, data integrity, and auditability over UI polish.
-2. Inspect existing files and project structure before proposing changes. Preserve working functionality.
-3. Explain security-sensitive changes step by step and state which files need modification.
-4. Never claim a feature is implemented, tested, secure, or production-ready without supporting code, verification, or design evidence.
-5. Distinguish implemented features from planned features and security assumptions.
-6. For authorization changes, consider unauthenticated users, other authenticated users, document owners, and future sharing-grant holders.
-7. Test both permitted and denied operations. A successful request alone does not establish access isolation.
-8. Never trust client-supplied user IDs, roles, filenames, MIME types, or document IDs as proof of authorization.
-9. Keep credentials, Flask secrets, session identifiers, and confidential documents out of source control.
-10. Review AI-generated security-sensitive code independently. Record incorrect suggestions, bugs, and the corrections made.
-11. Prefer small, verifiable changes. Avoid unnecessary rewrites of working code.
-12. Keep API documentation, README instructions, threat analysis, and implementation status synchronized with the actual code.
-13. Do not describe ownership checks as a complete fine-grained sharing system.
-14. Do not claim a tamper-evident audit trail exists until its design, implementation, and verification are complete.
-15. Before committing, review the Git diff, deleted files, newly added files, ignored secrets, and accidental generated artifacts.
+- Treat TrustVault as a security challenge, not just a CRUD app.
+- Work backend-first and explain one small change at a time.
+- Inspect the current code before asking me to replace a function.
+- Give exact file paths and PowerShell commands because I develop on Windows.
+- Prefer manual checks through the frontend, browser DevTools, Postman, or PostgreSQL for this stage; do not make pytest the only workflow.
+- Do not say a security feature is complete until we have checked it.
+- Do not push or deploy unless I explicitly ask.
+- Keep README, API docs, threat model, and implementation status consistent with the code.
+- When a security change is suggested, explain what it protects and how I can verify it.
 
 ---
 
-## 2026-10-19 — Entry 1: Initial Architecture
+## 2026-10-19 — Starting the project structure
 
-**Task:** Plan the first day of a seven-day secure document-sharing challenge using Flask, React, PostgreSQL, and Windows PowerShell.
+**What I asked:** Help me plan and build TrustVault, a secure document-sharing app, with a Flask backend, React frontend, PostgreSQL, and a working local setup.
 
-**AI proposal:** Use an application factory, modular Flask routes, a React/Vite frontend, PostgreSQL, a threat inventory, and milestone-based commits.
+**What the AI suggested:** A modular Flask app, database models/migrations, frontend/backend separation, and a basic health endpoint to prove the backend starts.
 
-**Review findings:**
+**What I learned / what could go wrong:** A health endpoint only proves that the service responds. It says nothing about who can access a document. We also had to understand why there were two `__init__.py` files instead of treating them as accidental duplicates.
 
-- The architecture was a starting point, not proof of security.
-- A health endpoint does not verify authentication or authorization.
-- Access isolation, revocation, private storage, and audit integrity required separate implementation and verification.
+**What I did:** Kept the application factory in `backend/app/__init__.py` and a simple `backend/app.py` entry point so I could start the backend with `python app.py`.
 
-**Action:** Build the application structure and health endpoint, then review configuration and secret handling.
+**How I checked it:** Started the backend locally and checked the health response. The initial health test file was later removed during project changes, so I did not treat that old test as proof of current automated coverage.
 
-**Status:** Initial architecture established. The initial health test file was later removed during project changes; confirm the current test suite before relying on automated test coverage.
-
-**Lesson:** A working application skeleton is not the same as a secure document-sharing system.
+**Commit link:** Add the actual commit URL here after checking Git history.
 
 ---
 
-## 2026-10-20 — Entry 2: Server-Side Sessions Instead of JWT
+## 2026-10-20 — Choosing server-side sessions instead of JWT
 
-**Task:** Choose an authentication mechanism appropriate for a browser-based document-sharing application.
+**What I asked:** Compare sessions and JWT for this browser-based app and help me choose a simple approach I can explain in an interview.
 
-**Decision:** Use server-side sessions with Flask-Session instead of JWT as the initial authentication mechanism.
+**What the AI helped with:** We chose Flask-Session and a server-side session store. The session cookie is called `trustvault_session`, and the configured session lifetime is eight hours.
 
-**Reasoning:**
+**What I checked:** I tested registration, login, `/api/auth/me`, logout, and a request after logout. The basic flow worked locally.
 
-- The backend can maintain session state and invalidate a session during logout.
-- The browser can send a session identifier in a cookie.
-- The server can clear or expire session state without relying solely on a JWT's expiration time.
-- This approach fits the current Flask application and avoids introducing unnecessary token-management complexity.
+**What still needed attention:** Sessions do not automatically solve stolen cookies, CSRF, fixation, or cookie configuration. I kept those as separate threats instead of claiming “sessions are secure” as a blanket statement.
 
-**Important distinction:** Session-based authentication does not automatically prevent account compromise. If an attacker steals a valid session cookie, the attacker may be able to use the session until it is invalidated or expires.
-
-**Current configuration and implementation:**
-
-- Session storage is configured to use SQLAlchemy.
-- The session cookie is named `trustvault_session`.
-- `HttpOnly` is enabled.
-- `SameSite=Lax` is configured.
-- The session lifetime is configured for eight hours.
-- `Secure` is controlled by `SESSION_COOKIE_SECURE`; it is disabled for local HTTP development and must be enabled for HTTPS deployment.
-- Login establishes the session after credential verification.
-- Logout clears the session.
-- Protected endpoints use the authenticated session to identify the current user.
-
-**Security work still required:**
-
-- Verify session expiration and invalidation behavior.
-- Verify cookie settings in the deployed environment.
-- Review CSRF protection for cookie-authenticated state-changing requests.
-- Review session identifier regeneration and fixation risks.
-- Test behavior after logout, expiration, and attempted cross-user access.
-
-**Lesson:** Choose authentication based on the application's threat model, not because JWT or sessions are universally more secure.
+**Commit link:** Add the actual commit URL here.
 
 ---
 
-## 2026-10-20 — Entry 3: Flask Application Factory and Startup
+## 2026-10-20 — The Render cookie mistake: `SameSite=Lax` versus `SameSite=None`
 
-**Task:** Keep the Flask application modular while making local development easy.
+**What I asked:** Help me understand why the deployed login request returned `200`, but the next `/api/auth/me` request returned `401`.
 
-**Implementation:**
+**What the first setup got wrong:** The frontend and API were hosted on separate Render origins. The `SameSite=Lax` cookie setting did not work for the observed cross-site request flow, even though login itself looked successful.
 
-- `backend/app/__init__.py` defines `create_app()`.
-- Extensions such as SQLAlchemy, Flask-Migrate, and Flask-Session are initialized with the application.
-- Health, authentication, and document routes are registered as blueprints.
-- `backend/app.py` provides a convenient development entry point.
+**What I changed:** I set the deployed session cookie to `SameSite=None`, while keeping the local configuration appropriate for local development. After the change, the deployed login/session flow worked.
 
-**Local startup command:**
+**How I checked it:** Tested the live frontend and API again, including a fresh browser session. The issue was resolved in that observed deployment setup.
 
-Run from `backend` with the virtual environment active:
+**Important lesson:** `SameSite=None` needs `Secure=true` over HTTPS, and it is not a CSRF defense. I still need to verify CSRF behavior for state-changing requests.
 
-```powershell
-python app.py
-```
-
-**Configuration requirements:**
-
-- `DATABASE_URL` provides the PostgreSQL connection string.
-- `FLASK_SECRET_KEY` is required for Flask session security.
-- Real credentials belong in `backend/.env`, not in committed source code.
-- `.env.example` documents the required configuration without containing real secrets.
-
-**Important:** The Flask development server and debug mode are for local development, not production deployment.
-
-**Lesson:** A clear entry point makes development easier, while configuration and secret handling must remain explicit.
+**Commit link:** Add the actual commit URL containing the configuration fix.
 
 ---
 
-## 2026-10-20 — Entry 4: Registration, Login, and Authorization
+## 2026-10-20 — The file disappeared after a Render restart
 
-**Task:** Implement authentication and establish the identity used by protected document endpoints.
+**What I asked:** Why did the document metadata remain in PostgreSQL while opening the document failed after the service restarted?
 
-**Implemented functionality:**
+**What was wrong with the original design:** The app saved metadata in PostgreSQL but wrote file bytes to the backend's local `storage/` directory. Render's local service filesystem was ephemeral, so the bytes disappeared while the database row remained.
 
-- User registration.
-- Password validation with a minimum length of 12 characters.
-- Server-side password hashing.
-- Duplicate-email handling.
-- Server-controlled assignment of the permitted user role.
-- Login with credential verification.
-- Current-user endpoint.
-- Logout with session clearing.
+**What I changed:** Added a `file_data` byte column to the document model through a database migration and moved the uploaded bytes into PostgreSQL. We checked the migration state and verified that a document remained available after a server refresh.
 
-**Relevant endpoints:**
+**Trade-off I accepted for this challenge:** Database-backed bytes make the small deployment easier to test, but increase database storage and backup size. It is not automatically the best long-term design for a large document platform.
 
-- `POST /api/auth/register`
-- `POST /api/auth/login`
-- `GET /api/auth/me`
-- `POST /api/auth/logout`
-
-**Manual verification previously performed:**
-
-- Registration returned `201`.
-- Login returned `200`.
-- The authenticated session allowed the current-user endpoint to return `200`.
-- A request without the required session returned `401`.
-- Logout returned `200`.
-- A subsequent current-user request returned `401`.
-
-These are recorded manual checks, not a substitute for repeatable automated tests.
-
-**Security lessons:**
-
-- The server must derive identity from the authenticated session rather than trusting a user ID supplied by the client.
-- The client must not be allowed to choose privileged roles during public registration.
-- Passwords must never be stored in plaintext.
-- Authentication establishes identity; each protected operation still needs authorization.
+**Commit link:** Add the actual migration/storage-change commit URL.
 
 ---
 
-## 2026-10-20 — Entry 5: Private Document Storage and Ownership Checks
+## 2026-10-20 — Ownership checks are not the same as a sharing system
 
-**Task:** Implement the initial document lifecycle with server-enforced ownership.
+**What I asked:** Help me list what the project needs end to end and make sure users cannot reach each other's documents by changing an ID.
 
-**Implemented functionality:**
+**What I learned:** Checking ownership in a route is useful, but a frontend-only check is not security. Also, an owner-only implementation does not meet the full requirement for named per-document read/edit grants.
 
-- Upload a document.
-- List the authenticated user's documents.
-- View supported documents inline.
-- Download a document as an attachment.
-- Delete a document.
-- Enforce owner-only access for document operations.
-- Configure a maximum request size of 10 MB.
-- Store uploaded files in a backend storage directory rather than frontend public assets.
+**What I did:** Kept server-side ownership checks on document operations and continued implementing grant/revoke routes. I used separate user sessions and a direct view request to check that another user's document was not returned to an ungranted user.
 
-**Relevant endpoints:**
+**What remains:** Every route needs a negative test, including list, view, download, rename/edit, delete, grant, and revoke. The challenge says they may remove an authorization check and rerun the tests, so those tests must genuinely fail if the check is removed.
 
-- `POST /api/documents`
-- `GET /api/documents`
-- `GET /api/documents/{id}/view`
-- `GET /api/documents/{id}/download`
-- `DELETE /api/documents/{id}`
-
-**Document viewing protections:**
-
-- Supported inline file types are restricted to PDF and selected image extensions.
-- The response uses a server-selected content type rather than trusting the uploaded MIME type.
-- `X-Content-Type-Options: nosniff` is set.
-- A restrictive Content Security Policy is set.
-- Responses are configured not to be cached.
-
-**Deletion behavior:** The database record is removed before the physical file is deleted. If physical cleanup fails, an orphaned file may remain and require reconciliation.
-
-**Security work still required:**
-
-- Test path traversal and attempts to access files belonging to other users.
-- Test unsupported extensions, malformed uploads, oversized uploads, and misleading file content.
-- Review storage permissions and path handling.
-- Consider generated storage names, file-content validation, malware scanning, quotas, and reliable orphan cleanup.
-- Confirm that errors do not reveal internal paths or sensitive implementation details.
-
-**Important limitation:** Ownership checks currently provide basic access isolation. They are not yet a complete document-sharing permission system.
+**Commit link:** Add the actual authorization/grant implementation commit URL.
 
 ---
 
-## 2026-10-20 — Entry 6: Frontend Integration and API Documentation
+## 2026-10-21 — Removing the confusing document preview error
 
-**Task:** Connect the React frontend to the Flask API and document the actual application behavior.
+**What I asked:** Help me fix the frontend preview handler so it reports API failures clearly rather than throwing a confusing error when the response body is not JSON.
 
-**Frontend functionality:** The dashboard supports document upload, listing, viewing, downloading, deletion, and logout through API service functions.
+**What was wrong:** The previous handler assumed the failed response would always contain JSON. If the server returned a non-JSON error, parsing could itself fail and obscure the actual status.
 
-**Development configuration:**
+**What I changed:** Updated `handleView` to check `response.ok`, try to parse the error body safely, and fall back to a status-based message if the response was not JSON.
 
-- React/Vite runs locally, typically at `http://localhost:5173`.
-- Flask runs locally at `http://127.0.0.1:5000`.
-- Flask CORS is configured for the frontend development origin.
-- Credentialed requests are enabled to support session cookies.
+**How I checked it:** Re-tested document viewing in the frontend. The confusing error stopped appearing in the observed flow.
 
-**Implementation detail:** The frontend API base URL currently points to the local backend. Make this configurable for deployment rather than assuming localhost will be the production API address.
+**Security note:** This was a user-experience fix, not a replacement for the backend's authorization check. A clear frontend message does not prove the document is protected.
 
-**Documentation action:**
-
-- Update `README.md` to describe the current project and local setup.
-- Update `APIS.md` to distinguish implemented endpoints from planned endpoints.
-- Keep `THREATS.md` aligned with actual controls and remaining risks.
-- Use this file to preserve significant implementation decisions and verification evidence.
-
-**Lesson:** Documentation must reflect the actual code. Do not describe planned endpoints as working features.
+**Commit link:** Add the actual commit URL.
 
 ---
 
-## 2026-10-20 — Entry 7: Git Hygiene and Pre-Push Review
+## 2026-10-21 — Denied requests should leave evidence too
 
-**Task:** Prepare the current implementation and documentation for a GitHub push.
+**What I asked:** Help me add audit records for denied document and sharing operations, not just successful actions.
 
-**Checks performed:**
+**What the AI helped with:** We used a `record_security_denial` helper that writes the denial record using a separate SQLAlchemy session. The event can include outcome, reason, endpoint, method, status code, actor information when known, and attempted document ID.
 
-- Confirmed `backend/.env` is ignored by Git.
-- Confirmed `backend/storage` is ignored by Git.
-- Confirmed `backend/.env` is not currently tracked.
-- Reviewed the modified, deleted, and untracked file list.
-- Cleaned trailing whitespace reported by `git diff --check`.
+**What I checked:** I inspected the stored PostgreSQL records and the admin audit API. A missing/unauthenticated document-view request and a request for a nonexistent or inaccessible document produced denial records.
 
-**Git notes:**
+**Problem we noticed:** Some rows showed “Unknown user”. An unauthenticated request does not have a known user ID, but an authenticated denial should retain the authenticated actor ID so the admin serializer can resolve the name. We reviewed the actor attribution rather than pretending all denials have a known person.
 
-- LF/CRLF messages on Windows are line-ending warnings, not necessarily code errors.
-- Deleted starter files and tests should be reviewed to confirm their removal is intentional.
-- Generated directories and compiled artifacts must not be committed accidentally.
-- Review both tracked changes and new files; `git diff --stat` does not show the contents of untracked files.
+**Limitation:** Separate-session persistence helps if the main operation fails, but cannot guarantee logging if PostgreSQL itself is unavailable.
 
-**Remaining action:** Finish the documentation review, inspect the complete Git status, stage intended files, review the staged diff, and only then commit and push.
+**Commit link:** Add the actual denial-audit commit URL.
 
 ---
 
-## Future Development Log Template
+## 2026-10-22 — Failed login and admin-access denial events
 
-For every significant AI-assisted change, record:
+**What I asked:** Add a useful set of authentication/authorization denial events without filling the audit log with every normal session check.
 
-**Date and task:**
+**What I changed:** Added `USER_LOGIN_DENIED` for invalid credentials and `ADMIN_ACCESS_DENIED` in `require_admin()`. The admin audit filter also needed to include these event types; otherwise, the event could be stored but not appear in the admin view.
 
-What problem were we solving?
+**What I tested:** A failed login produced a `USER_LOGIN_DENIED` row. A normal user calling the admin audit endpoint received `403`, and the `ADMIN_ACCESS_DENIED` event appeared in the admin audit response.
 
-**Initial proposal:**
+**What we deliberately avoided:** Logging every `/api/auth/me` request with no session. The frontend may call this endpoint during normal startup or after logout, so logging all of those requests would create noisy audit records.
 
-What did the AI recommend?
-
-**Implementation:**
-
-Which files and behaviors changed?
-
-**Independent review:**
-
-What assumptions, defects, or security concerns were discovered?
-
-**Verification:**
-
-What exact manual checks or automated tests were run, and what were their results?
-
-**Remaining risks:**
-
-What has not been implemented or verified?
-
-**Decision and lesson:**
-
-What did we learn, and what should future changes preserve?
+**Commit link:** Add the actual commit URL for these changes.
 
 ---
 
+## 2026-10-22 — Why I will not call the audit log immutable yet
+
+**What I asked:** Help me understand the difference between audit logging and an immutable/tamper-evident audit trail.
+
+**What I learned:** Saving audit events in PostgreSQL and hiding edit buttons in the UI does not stop someone with enough database privilege from altering or deleting records. A separate database session also does not make records immutable.
+
+**What is implemented:** Successful activity and selected denied actions are recorded, and an admin can inspect the activity. Some denial events are stored independently from the main operation's transaction.
+
+**What is not proven:** A tampering test that detects modified, deleted, reordered, or truncated records. A hash chain plus restricted permissions and independent checkpoints is a possible next design, but I must not describe it as implemented until the code and tests prove it.
+
+**Commit link:** Add the actual commit URL if this review changed code or documentation; otherwise say “documentation/review only” rather than inventing a code commit.
+
+---
+
+## Final review before submission
+
+The AI helped me move faster, but I still need to check the code and record real results. Before I submit, I will:
+
+- Verify that `APIS.md` matches the actual route definitions.
+- Create and test live ADMIN, OWNER, and VIEWER/recipient demo accounts.
+- Test cross-user access and immediate revocation using separate sessions.
+- Confirm which audit events are stored and which appear in the admin view.
+- Run the tests that actually exist in the repository.
+- Keep the remaining risks visible in `THREATS.md`.
+- Replace every “add commit link” note in this file with a real commit URL, or clearly mark the entry as a review that did not produce a separate commit.

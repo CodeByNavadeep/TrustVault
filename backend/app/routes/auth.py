@@ -7,7 +7,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 
 from app import db
 from app.models import User
-from app.audit import record_audit_event
+from app.audit import record_audit_event, record_security_denial
 
 auth_bp = Blueprint("auth", __name__)
 
@@ -116,6 +116,19 @@ def login():
         or not user.is_active
         or not check_password_hash(user.password_hash, password)
     ):
+        record_security_denial(
+            event_type="USER_LOGIN_DENIED",
+            actor_id=None,
+            actor_label="UNAUTHENTICATED",
+            reason="Invalid email or password",
+            status_code=401,
+            endpoint=request.endpoint or request.path,
+            method=request.method,
+        )
+
+        # Store the attempted email for security investigation,
+        # but never store the submitted password.
+        # The shared denial helper records its standard details.
         return jsonify({"error": "Invalid email or password"}), 401
 
     # Record successful login without storing credentials.
@@ -148,6 +161,7 @@ def login():
     }), 200
 
 
+
 @auth_bp.get("/auth/me")
 def get_current_user():
     user_id = session.get("user_id")
@@ -158,6 +172,16 @@ def get_current_user():
     user = db.session.get(User, user_id)
 
     if user is None or not user.is_active:
+        record_security_denial(
+            event_type="AUTH_SESSION_DENIED",
+            actor_id=None,
+            actor_label="ANONYMOUS",
+            reason="Session user missing or inactive",
+            status_code=401,
+            endpoint=request.endpoint or request.path,
+            method=request.method,
+        )
+
         session.clear()
         return jsonify({"error": "Authentication required"}), 401
 
@@ -169,6 +193,7 @@ def get_current_user():
             "role": user.role,
         }
     }), 200
+
 
 
 @auth_bp.post("/auth/logout")

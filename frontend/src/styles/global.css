@@ -2053,3 +2053,46 @@ img {
   border-color: #abefc6;
 }
 
+.audit-action-cell {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+}
+
+.audit-status {
+    display: inline-flex;
+    align-items: center;
+    width: fit-content;
+    padding: 3px 9px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.audit-status-success {
+    color: #166534;
+    background-color: #dcfce7;
+    border: 1px solid #86efac;
+}
+
+.audit-status-denied {
+    color: #991b1b;
+    background-color: #fee2e2;
+    border: 1px solid #fca5a5;
+}
+/* Successful event: entire row green */
+/* .activity-table tbody tr.audit-row-success > td {
+    background-color: #dcfce7 !important;
+    color: #166534 !important;
+} */
+
+.activity-table tbody tr.audit-row-denied > td {
+    background-color: #fee2e2 !important;
+    color: #991b1b !important;
+}
+
+.activity-table tbody tr.audit-row-success .activity-action,
+.activity-table tbody tr.audit-row-denied .activity-action {
+    color: inherit !important;
+}

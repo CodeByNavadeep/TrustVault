@@ -19,6 +19,20 @@ function formatEventType(eventType = "") {
         .join(" ");
 }
 
+function getEventStatus(log) {
+    const details = log.details || {};
+    const eventType = (log.event_type || "").toUpperCase();
+    const outcome = String(details.outcome || "").toUpperCase();
+    const statusCode = Number(details.status_code || 0);
+
+    const isDenied =
+        outcome === "DENIED" ||
+        eventType.endsWith("_DENIED") ||
+        (statusCode >= 400 && statusCode <= 599);
+
+    return isDenied ? "denied" : "success";
+}
+
 function getEventIcon(eventType = "") {
     if (eventType.includes("DOWNLOADED")) return Download;
     if (eventType.includes("VIEWED")) return Eye;
@@ -107,15 +121,23 @@ function ActivityTable({ rows, authentication = false }) {
                             ? UserRound
                             : getEventIcon(log.event_type);
 
+                        const status = getEventStatus(log);
+
                         return (
-                            <tr key={log.id}>
+                            <tr
+                                key={log.id}
+                                className={
+                                    getEventStatus(log) === "denied"
+                                        ? "audit-row-denied"
+                                        : "audit-row-success"
+                                }
+                            >
                                 <td>
                                     <span className="activity-action">
                                         <EventIcon size={16} />
                                         <span>{formatEventType(log.event_type)}</span>
                                     </span>
                                 </td>
-
                                 <td>{log.actor_name || "Unknown user"}</td>
 
                                 <td>

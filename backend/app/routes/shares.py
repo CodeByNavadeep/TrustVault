@@ -6,9 +6,31 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from app import db
 from app.models import Document, DocumentGrant, User
-from app.audit import record_audit_event
+from app.audit import record_audit_event, record_security_denial
 
 shares_bp = Blueprint("shares", __name__)
+
+
+def log_share_denial(
+    *,
+    event_type,
+    reason,
+    status_code,
+    actor_id=None,
+    document_id=None,
+    owner_id=None,
+):
+    record_security_denial(
+        event_type=event_type,
+        actor_id=actor_id,
+        actor_label="ANONYMOUS" if actor_id is None else None,
+        document_id=document_id,
+        owner_id=owner_id,
+        reason=reason,
+        status_code=status_code,
+        endpoint=request.endpoint or request.path,
+        method=request.method,
+    )
 
 
 def get_active_user():
@@ -31,6 +53,11 @@ def grant_document_access(document_id):
     user = get_active_user()
 
     if user is None:
+        log_share_denial(
+            event_type="ACCESS_GRANT_DENIED",
+            reason="Authentication required",
+            status_code=401,
+        )
         return jsonify({"error": "Authentication required"}), 401
 
     document = Document.query.filter_by(
@@ -39,6 +66,13 @@ def grant_document_access(document_id):
     ).first()
 
     if document is None:
+        log_share_denial(
+            event_type="ACCESS_GRANT_DENIED",
+            reason="Document missing or user is not the owner",
+            status_code=404,
+            actor_id=user.id,
+            document_id=document_id,
+        )
         return jsonify({"error": "Document not found"}), 404
 
     data = request.get_json(silent=True)
@@ -135,6 +169,11 @@ def list_document_shares(document_id):
     user = get_active_user()
 
     if user is None:
+        log_share_denial(
+            event_type="ACCESS_LIST_DENIED",
+            reason="Authentication required",
+            status_code=401,
+        )
         return jsonify({"error": "Authentication required"}), 401
 
     document = Document.query.filter_by(
@@ -143,6 +182,13 @@ def list_document_shares(document_id):
     ).first()
 
     if document is None:
+        log_share_denial(
+            event_type="ACCESS_LIST_DENIED",
+            reason="Document missing or user is not the owner",
+            status_code=404,
+            actor_id=user.id,
+            document_id=document_id,
+        )
         return jsonify({"error": "Document not found"}), 404
 
     grants = (
@@ -167,6 +213,7 @@ def list_document_shares(document_id):
     }), 200
 
 
+
 @shares_bp.delete(
     "/documents/<int:document_id>/shares/<int:recipient_id>"
 )
@@ -174,6 +221,11 @@ def revoke_document_access(document_id, recipient_id):
     user = get_active_user()
 
     if user is None:
+        log_share_denial(
+            event_type="ACCESS_REVOKE_DENIED",
+            reason="Authentication required",
+            status_code=401,
+        )
         return jsonify({"error": "Authentication required"}), 401
 
     document = Document.query.filter_by(
@@ -182,6 +234,13 @@ def revoke_document_access(document_id, recipient_id):
     ).first()
 
     if document is None:
+        log_share_denial(
+            event_type="ACCESS_REVOKE_DENIED",
+            reason="Document missing or user is not the owner",
+            status_code=404,
+            actor_id=user.id,
+            document_id=document_id,
+        )
         return jsonify({"error": "Document not found"}), 404
 
     grant = DocumentGrant.query.filter_by(
@@ -190,7 +249,17 @@ def revoke_document_access(document_id, recipient_id):
     ).first()
 
     if grant is None:
+        log_share_denial(
+            event_type="ACCESS_REVOKE_DENIED",
+            reason="Share not found",
+            status_code=404,
+            actor_id=user.id,
+            document_id=document.id,
+            owner_id=document.owner_id,
+        )
         return jsonify({"error": "Share not found"}), 404
+
+    recipient = db.session.get(User, grant.recipient_id)
 
     try:
         record_audit_event(
@@ -199,9 +268,9 @@ def revoke_document_access(document_id, recipient_id):
             document_id=document.id,
             details={
                 "recipient_id": grant.recipient_id,
-                "recipient_email": db.session.get(
-                    User, grant.recipient_id
-                ).email,
+                "recipient_email": (
+                    recipient.email if recipient else None
+                ),
                 "permission": grant.permission,
             },
         )
@@ -211,8 +280,9 @@ def revoke_document_access(document_id, recipient_id):
 
     except SQLAlchemyError:
         db.session.rollback()
-        current_app.logger.exception("Revoking document access failed")
+        current_app.logger.exception(
+            "Revoking document access failed"
+        )
         return jsonify({"error": "Unable to revoke access"}), 500
-
 
     return jsonify({"message": "Document access revoked"}), 200

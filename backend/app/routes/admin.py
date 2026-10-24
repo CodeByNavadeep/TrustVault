@@ -5,12 +5,28 @@ from sqlalchemy import func
 
 from app import db
 from app.models import AuditLog, DocumentHistory, User
+from app.audit import record_audit_event, record_security_denial
 
 admin_bp = Blueprint("admin", __name__)
 
 AUTH_EVENT_TYPES = {
     "USER_REGISTERED",
     "USER_LOGIN",
+    "USER_LOGIN_DENIED",
+}
+
+SECURITY_DENIAL_EVENT_TYPES = {
+    "DOCUMENT_LIST_DENIED",
+    "DOCUMENT_UPLOAD_DENIED",
+    "DOCUMENT_VIEW_DENIED",
+    "DOCUMENT_DOWNLOAD_DENIED",
+    "DOCUMENT_RENAME_DENIED",
+    "DOCUMENT_DELETE_DENIED",
+    "ACCESS_GRANT_DENIED",
+    "ACCESS_LIST_DENIED",
+    "ACCESS_REVOKE_DENIED",
+    "ADMIN_ACCESS_DENIED",
+    "AUTH_SESSION_DENIED"
 }
 
 
@@ -18,22 +34,50 @@ def require_admin():
     user_id = session.get("user_id")
 
     if user_id is None:
+        record_security_denial(
+            event_type="ADMIN_ACCESS_DENIED",
+            actor_id=None,
+            actor_label="ANONYMOUS",
+            reason="Authentication required",
+            status_code=401,
+            endpoint=request.endpoint or request.path,
+            method=request.method,
+        )
+
         return None, (jsonify({"error": "Authentication required"}), 401)
 
     user = db.session.get(User, user_id)
 
     if user is None or not user.is_active:
+        record_security_denial(
+            event_type="ADMIN_ACCESS_DENIED",
+            actor_id=None,
+            actor_label="ANONYMOUS",
+            reason="User missing or inactive",
+            status_code=401,
+            endpoint=request.endpoint or request.path,
+            method=request.method,
+        )
+
         session.clear()
         return None, (jsonify({"error": "Authentication required"}), 401)
 
     if (user.role or "").upper() != "ADMIN":
+        record_security_denial(
+            event_type="ADMIN_ACCESS_DENIED",
+            actor_id=user.id,
+            reason="Administrator access required",
+            status_code=403,
+            endpoint=request.endpoint or request.path,
+            method=request.method,
+        )
+
         return None, (
             jsonify({"error": "Administrator access required"}),
             403,
         )
 
     return user, None
-
 
 def normalize_event_type(value):
     return (
@@ -138,10 +182,15 @@ def get_audit_logs():
     ]
 
     # Authentication events come from AuditLog, not document history.
+    # Authentication events and security denials come from AuditLog.
     auth_query = (
         db.session.query(AuditLog, User.name, User.email)
         .outerjoin(User, AuditLog.actor_id == User.id)
-        .filter(AuditLog.event_type.in_(AUTH_EVENT_TYPES))
+        .filter(
+            AuditLog.event_type.in_(
+                AUTH_EVENT_TYPES | SECURITY_DENIAL_EVENT_TYPES
+            )
+        )
     )
 
     if event_type:
@@ -159,8 +208,15 @@ def get_audit_logs():
         )
 
     if actor_name:
+        from sqlalchemy import or_
+
         auth_query = auth_query.filter(
-            User.name.ilike(f"%{actor_name}%")
+            or_(
+                User.name.ilike(f"%{actor_name}%"),
+                AuditLog.details["actor_label"].astext.ilike(
+                    f"%{actor_name}%"
+                ),
+            )
         )
 
     auth_rows = (
