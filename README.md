@@ -99,9 +99,9 @@ Do not publish guessed or placeholder passwords as if they work. Before submissi
 
 | Role | Email | Password | Verification |
 |---|---|---|---|
-| ADMIN | `REPLACE_WITH_VERIFIED_ADMIN_EMAIL` | `REPLACE_WITH_VERIFIED_ADMIN_PASSWORD` | Must be tested on live deployment |
-| OWNER | `REPLACE_WITH_VERIFIED_OWNER_EMAIL` | `REPLACE_WITH_VERIFIED_OWNER_PASSWORD` | Must be tested on live deployment |
-| VIEWER | `REPLACE_WITH_VERIFIED_VIEWER_EMAIL` | `REPLACE_WITH_VERIFIED_VIEWER_PASSWORD` | Must be tested on live deployment |
+| ADMIN | `admin@gmail.com` | `admin@123456789` | Must be tested on live deployment |
+| OWNER | `gnavadeep512@gmail.com` | `nav@123456789` | Must be tested on live deployment |
+| VIEWER | `abdulgaffarshaik.ai@gmail.com` | `Gaffar@123456789` | Must be tested on live deployment |
 
 Before publishing, replace every placeholder and test each account in a clean browser session. Never reuse a personal password.
 
